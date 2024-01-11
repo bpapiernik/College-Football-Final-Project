@@ -1,0 +1,271 @@
+---
+title: "College Football 2022 Stats Final Project"
+author: "Casey Kmet, Brian Papiernik, Quinn Murphy, Kiki Vanzanten"
+date: "2023-07-23"
+output: html_document
+---
+
+## Introduction
+
+This is an R Markdown document for the analysis of 2022 College Football Statistics for Offense, Defense, and Rankings taken from the Sports Reference 2022 College Football page. https://www.sports-reference.com/cfb/years/2022-team-offense.html; https://www.sports-reference.com/cfb/years/2022-team-defense.html;
+https://www.sports-reference.com/cfb/years/2022-ratings.html
+
+Loading the libraries for the project
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(readxl)
+library(psych)
+library(olsrr)
+```
+
+Loading the Offensive data
+
+```{r}
+CFB_Offense <- read_excel("CFB_Offense.xlsx")
+
+CFB_Offense <- CFB_Offense %>%
+  mutate_at(c('O_Rank', 'GP', 'PPG', 'PCMP', 'PassAtt', 'CompPass%', 'PassYds', 'PassTD', 'RushAtt','RushYds', 'RushAvg', 'RushTD', 'PlaysPG', 'YdsPG', 'YardsPP', 'FirstDPass', 'FDRush', 'FDPen', 'FDs', 'Penalties', 'PenYds', 'FumLost', 'PassINT', 'Turnovers'), as.numeric)
+```
+
+Loading the Defensive data
+
+```{r}
+CFB_Defense <- read_excel("CFB_Defense.xlsx")
+
+CFB_Defense <- CFB_Defense %>%
+  mutate_at(c('D_Rank', 'GP', 'OPPG', 'OPComp', 'OPassAtt', 'OPassComp%', 'OPassYds', 'OPassTD', 'ORushAtt', 'ORushYds', 'ORushAvgAtt', 'ORushTD', 'OTotalPlays', 'OTotalYds', 'OYardsPP', 'OFDPass', 'OFDRush','OFDPen', 'OPFDs','OPen','OPenYds', 'OFumLost', 'OPassINT', 'OTO'), as.numeric)
+```
+
+Loading the Ranking data and adding the categorical variable: Winning Season. This categorical variable (Winning Season) is created with a case_when function with two categories: Yes and No. The 'Yes' category occurs when 'Wins' is greater than 'Losses'. The 'No' category occurs when 'Wins' is less than or equal to 'Losses'. For example, a team with 6 wins and 6 losses would not be considered a Winning season.
+
+```{r}
+CFB_Ranking <- read_excel("CFB_Ranking.xlsx")
+
+CFB_Ranking <- CFB_Ranking %>%
+  mutate_at(c('Rank', 'AP Rank', 'Wins', 'Losses'), as.numeric)
+
+CFB_Ranking <- CFB_Ranking %>%
+  mutate(WinningSZN = case_when(Wins > Losses ~ 'Yes', 
+                                Wins <= Losses ~ 'No'))
+```
+
+In order to make comparisons later between offense, defense, and team rankings, we decided that all three datasets should be joined fully on the School name variable called 'School'. This merging allows us to create comparisons for how offense and defense statistics related to Wins and Losses.
+
+```{r}
+CFB_Total <- list(CFB_Ranking, CFB_Offense, CFB_Defense)
+
+CFB_Total2 <- CFB_Total %>%
+  reduce(full_join, by = 'School')
+```
+
+## Cross Tabulation for Table
+
+# Frequency Table
+
+This frequency table is a side by side comparison of the winning vs losing season brokend down by the conference.
+```{r}
+table(CFB_Total2$CONF, CFB_Total2$WinningSZN)
+```
+Histogram plot of the frequency of the number of Wins for each team in the 2022 season grouped by Conference
+```{r}
+CFB_Total2 %>%
+  group_by(CONF) %>%
+  ggplot() + geom_bar(mapping = aes(x = Wins, fill = CONF))
+```
+
+Histogram plot of the frequency of the number of Losses for each team in the 2022 season grouped by Conference
+```{r}
+CFB_Total2 %>%
+  group_by(CONF) %>%
+  ggplot() + geom_bar(mapping = aes(x = Losses, fill = CONF))
+```
+
+# Proportion Table
+
+This table breaks down the proportion of winning vs losing season in each conference. Each conference's 'Yes' and 'No' will add up to 100 percent.
+```{r}
+round(prop.table(table(CFB_Total2$CONF, CFB_Total2$WinningSZN), margin = 1)*100,2)
+```
+
+## Descriptive Statistic
+
+The descriptive statistics that is used below is the mean, median. standard deviation, and range for each conference separated by Offensive Points Per Game for the Offense and Opponent Points Per Game for the Defense.
+
+```{r}
+CFB_Total2 %>%
+  group_by(CONF) %>%
+  select(CONF, PPG, OPPG) %>%
+  summarize(meanPPG = mean(PPG, na.rm = TRUE),
+            meanOppPPG = mean(OPPG, na.rm = TRUE),
+            medianPPG = median(PPG, na.rm = TRUE),
+            medianOppPPG = median(OPPG, na.rm = TRUE),
+            sdPPG = sd(PPG, na.rm = TRUE),
+            sdOppPPG = sd(OPPG, na.rm = TRUE),
+            rangePPG = max(PPG, na.rm = TRUE) - min(PPG, na.rm = TRUE),
+            rangeOppPPG = max(OPPG, na.rm = TRUE) - min(OPPG, na.rm = TRUE))
+```
+
+## Point and Interval Estimation
+
+Our project ended up sampling the Offensive side of the dataset. The variables that we used for the point and interval estimate average Passing Yards and average Rushing Yards  We chose a sample size of n = 110 because we wanted our sample to randomly include over 80% of the teams in Division 1 College Football. We also chose our confidence interval to be 95% (indicated by the qnorm(0.975)) or an alpha of 0.05.
+
+# Passing Yards
+
+```{r}
+describe(CFB_Total2$PassYds, fast = TRUE)
+
+Samp_PassYds <- sample(CFB_Total2$PassYds, size = 110)
+
+Sampmean_PassYds <- mean(Samp_PassYds, na.rm = TRUE)
+sampSD_PassYds <- sd(Samp_PassYds, na.rm = TRUE)
+mean_PassYds <- mean(CFB_Total2$PassYds, na.rm = TRUE)
+SD_PassYds <- sd(CFB_Total2$PassYds, na.rm = TRUE)
+z_score <- qnorm(0.975)
+n = 110
+
+CI_PassYds <- c(Sampmean_PassYds - (z_score*(SD_PassYds/sqrt(n))), 
+                Sampmean_PassYds + (z_score*(SD_PassYds/sqrt(n))))
+
+print(Sampmean_PassYds)
+print(mean_PassYds)
+print(CI_PassYds)
+
+```
+Our code shows that the sample mean for Passing yards is 235.95, the population mean for Passing yards is 233.016, and the 95% confidence interval is [226.1270, 245.7894]. (It is important to note that these values change each time the code is ran because it creates a new sample from the 131 teams each time.)
+
+
+# Rushing Yards
+
+```{r}
+describe(CFB_Total2$RushYds, fast = TRUE)
+
+Samp_RushYds <- sample(CFB_Total2$RushYds, size = 110)
+
+Sampmean_RushYds <- mean(Samp_RushYds, na.rm = TRUE)
+sampSD_RushYds <- sd(Samp_RushYds, na.rm = TRUE)
+mean_RushYds <- mean(CFB_Total2$RushYds, na.rm = TRUE)
+SD_RushYds <- sd(CFB_Total2$RushYds, na.rm = TRUE)
+z_score <- qnorm(0.975)
+n = 110
+
+CI_RushYds <- c(Sampmean_RushYds - (z_score*(SD_RushYds/sqrt(n))), 
+                Sampmean_RushYds + (z_score*(SD_RushYds/sqrt(n))))
+
+print(Sampmean_RushYds)
+print(mean_RushYds)
+print(CI_RushYds)
+```
+Our code shows that the sample mean for Rushing yards is 161.1127, the population mean for Rushing yards is 152.8664, and the 95% confidence interval is [152,6659, 169.5596]. (It is important to note that these values change each time the code is ran because it creates a new sample from the 131 teams each time.)
+
+Although Notre Dame Football has been lacking in the Passing yards department with a mean of 207.1 passing yards per game which is below our Confidence Interval for Passing yards, Notre Dame Football makes this up in the Rushing yards department with a mean of 189.1 rushing yards per game which is above our Confidence Interval for Rushing Yards. This suggests that Notre Dame Football needs to improve their passing game with better quarterback play.
+
+## Hypothesis Testing
+
+Marcus Freeman is a defensive coach who always says that defense wins championships. He believe that in order to win, Notre Dame has to limit the opposing offensive to under 28.8 points per game (3 points under our PPG average). Here we calculate a single t-test to determine whether he believes it's true: 
+
+Ho: u >= 28.8
+Ha: u < 28.8
+
+```{r}
+t.test(OPPG ~ 1,          
+       alternative = "less",   
+       mu = 28.8,                      
+       conf.level = 0.95,           
+       data = CFB_Total2)
+```
+We end up rejecting the null hypothesis because our p-value is less than alpha.  Also, we reject the null hypothesis in another test because our null value of 28.8 Opponent points per game is outside the 95% Confidence Interval range.
+
+# Correlation Offense
+
+```{r}
+corr.test(CFB_Total2[,c("PPG","YardsPP")])
+```
+The offensive correlation shows the relationship between two variables: points scored per game and offensive yards gained per play.  This correlation had a coefficient of 0.89 which indicates a strong positive correlation between the two variables. 
+
+# Correlation Defense
+
+```{r}
+corr.test(CFB_Total2[,c("OPPG","OYardsPP")])
+```
+The defensive correlation shows the relationship between two variables: opponent points scored per game and opponent yards gained per play.  This correlation had a coefficient of 0.87 which also indicates a strong positive correlation between the two variables. 
+
+
+
+The difference between the offensive (0.89) and defensive correlations (0.87) is very small. This suggests that the offense is slightly more consistent in converting yards per play into points when compared to the defense's consistency in preventing opponents from scoring based on opponents yards gained per play.
+
+# Simple Linear Regression Model
+
+Our regression model below ends up predicting the total points per game based on the predictor of total Offensive First Downs.
+
+```{r}
+First_Downs <- lm(PPG ~ FDs, data = CFB_Total2)
+ols_regress(First_Downs)
+```
+This model shows that offensive first downs have a strong predictive relationship with points per game. Our adjusted R-squared (0.70) indicates that 70% of the variation in points per game can be explained or accounted for by the variation in the number of first downs by the offensive. Also, our model ends up being good because the Mean Square Error is equal to 14.510 which is very small when compared to our Sum of Our Squares Regression which is 4414.737. Our model suggests that offensive first downs is statistically significant because it's p-value (0.000) is less than the alpha (0.05). The y-intercept when total first downs is equal to 0 ends up being -12.444. With each additional offensive first down, the team generates an additional 1.958 points.
+
+# Three Bivarient Correlations
+
+Correlation 1: Points Per Game vs. Defensive Takeaways
+Correlation 2: Wins vs. Penalties
+Correlation 3: Offensive First Downs vs. Pass Attempts
+
+```{r}
+corr.test(CFB_Total2[,c("PPG","OTO")])
+corr.test(CFB_Total2[,c("Wins", "Penalties")])
+corr.test(CFB_Total2[,c("FDs", "PassAtt")])
+```
+Correlation 1: Points Per Game vs. Defensive Takeaways (Weak Positive Correlation, 0.12):
+
+This correlation suggests that there is a minimal positive relationship between points per game and defensive takeaways. While the relationship is minimal, defensive takeaways can be very beneficial to the offense by providing them with more opportunities to score points, increases the offense's time of possession, and provides better field position for the offense which increases the likelihood of the offense scoring points.
+
+Correlation 2: Wins vs. Penalties (Weak Negative Correlation, -0.1):
+
+This correlation suggests that there is a minimal negative relationship between wins and penalties. While penalties can influence the outcome of games to some extent by placing our offenses and defenses in worse field position based on our team committing the penalty, penalties are not the primary determinant of a team's success by wins.
+
+Correlation 3: Offensive First Downs vs. Pass Attempts (Semi-Strong Positive Correlation, 0.41):
+
+This correlation suggests that teams are more likely to achieve first downs when they rely on passing the ball. While this data doesn't provide information on down and yardages in order to gain a first down, it shows that passing the ball can be an effective strategy to gain yardages especially when defenses are expecting a running play.
+
+## Multiple Regression
+
+Our multiple regression model ends up predicting a team's difference in points per game based on 9 variables for the offense and 9 variables for the defenses.  The offensive and defensive variables are counterparts of each other because the defensive variables are the opposing team's offensive variables against our team's defense. For the offensive variables, we used offensive yards per play (YardsPP), penalty yards (PenYds), passing completion percentage (CompPass%), passing yards (PassYds), offensive turnovers (Turnovers), offensive plays per game (PlaysPG), rushing average (RushAvg), first downs gained by passing (FirstDPass), and first downs gained by running (FDRush). For the defensive variables, we used opponent yards per play (OYardsPP), opponent penalty yards (OPenYds), opponent passing completion percentage (OCompPass%), opponent passing yards (OPassYds), defensive takeawayss (OTO), defensive plays per game (OTotalPlays), opponent rushing average (ORushAvgAtt), opponent first downs gained by passing (OFDPass), and opponent first downs gained by running (OFDRush).
+
+# Multiple Regression  (Correlation)
+
+```{r}
+CFB_Total3 <- CFB_Total2 %>%
+  mutate(PPG_difference = PPG - OPPG)
+
+corr.test(CFB_Total3[,c("PPG_difference","YardsPP","OYardsPP","PenYds", "OPenYds", "CompPass%", "OPassComp%", "PassYds", "OPassYds", "Turnovers", "OTO", "PlaysPG", "OTotalPlays", "RushAvg", "ORushAvgAtt", "FirstDPass", "FDRush", "OFDPass", "OFDRush")])
+```
+This correlation test helps us test for possible multicollinearity which variables are highly correlated with one another. We ended up analyzing that 6 of our 18 variables were highly correlated with one another. These variables are passing completion percentage (CompPass%), passing yards (PassYds), offensive plays per game (PlaysPG), defensive plays per game (OTotalPlays), rushing average (RushAvg), and first downs gained by passing (FirstDPass).
+
+
+# Multiple Regression Line
+
+```{r}
+multreg_CFB <- 
+  lm(PPG_difference ~ YardsPP + OYardsPP + PenYds + OPenYds + `CompPass%`+ `OPassComp%` + PassYds + OPassYds + Turnovers + OTO + PlaysPG + OTotalPlays + RushAvg + ORushAvgAtt + FirstDPass + FDRush + OFDPass + OFDRush,
+     data = CFB_Total3)
+
+ols_regress(multreg_CFB)
+
+```
+Our model shows that our 18 predictors have a strong predictive relationship with a team's point differential per game. Our adjusted R-squared (0.943) indicates that 94.3% of the variation in a team's point differential per game can be explained or accounted for by the variation in the 18 different predictors. Also, our model ends up being good because the Mean Square Error is equal to 5.507 which is very small when compared to our Sum of Our Squares Regression which is 12009.180. Our model suggests that 12 of the 18 predictive variables are statistically signification because their p-value is minimal when compared to alpha. The y-intercept when each predictive variable is equal to 0 ends up being 24.097.
+
+
+
+# Reduced Multiple Regression due to Multicollinearity
+
+We ended up reducing our total variables to 12 variables due to the 6 variables each having higher correlations with the other 17 variables in our correlation test. We also wanted to remove any variables that had a high p-value compared to our alpha. The 6 variables removed are passing completion percentage (CompPass%), passing yards (PassYds), offensive plays per game (PlaysPG), defensive plays per game (OTotalPlays), rushing average (RushAvg), and first downs gained by passing (FirstDPass).
+
+```{r}
+multreg_CFB2 <- 
+  lm(PPG_difference ~ YardsPP + OYardsPP + PenYds + OPenYds + `OPassComp%` + OPassYds + Turnovers + OTO  + ORushAvgAtt + FDRush + OFDPass + OFDRush,
+     data = CFB_Total3)
+
+ols_regress(multreg_CFB2)
+```
+When compared to our previous multiple regression model, the difference between the R-Squared and Adjusted R-Squared decreased from 0.008 for the previous model to 0.006 for our new model. Although this decrease is minimal, this smaller difference between R-Squared and Adjusted R-Squared indicates that our new model eliminated some poor predictors. Also, our y-intercept when each predictive variable is equal to 0 ends up decreasing to 15.616. This smaller y-intercept is more closely related to when an actual game first starts and the actual game's beginning point differential is equal to 0.
